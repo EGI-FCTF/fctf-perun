@@ -6,20 +6,27 @@
 #
 # 'process-opennebula_fedcloud.sh' expects data in the following format:
 #
-# <VO_NAME>_<UNIQUE_USER_ID>-<USER_DN_HASH>:<VO_NAME>:<USER_DN>:<USER_MAIL>
+# <VO_NAME>_<UNIQUE_USER_ID>:<VO_NAME>:<USER_DN>:<USER_MAIL>
 #
 # e.g.,
 #
-# fedcloud.egi.eu_1-5sfg6f54gfs:fedcloud.egi.eu:/C=CZ/O=University/CN=Name:mymail@example.org
+# fedcloud.egi.eu_1:fedcloud.egi.eu:/C=CZ/O=University/CN=Name:mymail@example.org
 ################################################################################################
 
 PROTOCOL_VERSION='3.0.0'
 
 function process {
   ### Status codes for log_msg
-  I_USER_DELETED=(0 "User ${VO_USER_FROM_ON} is no longer a member of ${VO_FROM_PERUN} and has been removed from OpenNebula!")
-  I_USER_ADDED=(0 "User ${USERNAME} is a member of ${VO_SHORTNAME} and has been added to OpenNebula!")
-  I_USER_UPDATED=(0 "User ${USERNAME} is still a member of ${VO_SHORTNAME} and has been updated in OpenNebula!")
+  I_USER_DELETED=(0 'User ${VO_USER_FROM_ON} is no longer a member of ${VO_FROM_PERUN} and has been removed from OpenNebula!')
+  I_USER_ADDED=(0 'User ${USERNAME} is a member of ${VO_SHORTNAME} and has been added to OpenNebula!')
+  I_VO_SKIPPED=(0 'VO ${VO_FROM_PERUN} is not registered as a group in OpenNebula, skipping!')
+  I_DELETING_VMS=(0 'Killed VMS [${USER_VMS}] owned by ${VO_USER_FROM_ON}!')
+  I_DELETING_VNETS=(0 'Deleted VNETS [${USER_VNETS}] owned by ${VO_USER_FROM_ON}!')
+  I_DELETING_IMAGES=(0 'Deleted IMAGES [${USER_IMAGES}] owned by ${VO_USER_FROM_ON}!')
+  I_DELETING_TEMPLATES=(0 'Deleted TEMPLATES [${USER_TEMPLATES}] owned by ${VO_USER_FROM_ON}!')
+  I_USER_AUTHN_UPDATE=(0 'Updated authn [${ON_AUTHN} > x509, ${ON_PASS} > ${VOMS_DN}] for ${USERNAME}!')
+  I_USER_GROUP_UPDATE=(0 'Updated group membership [${ON_GROUP} > ${VO_SHORTNAME}] for ${USERNAME}!')
+  I_USER_PROPS_UPDATED=(0 'Updated properties [${ON_PROP_X509_DN} > ${USER_DN}, ${ON_PROP_NAME} > ${FULLNAME}, ${ON_PROP_EMAIL} > ${USER_EMAIL}] for ${USERNAME}!')
 
   ### Error codes for catch_error
   E_ON_DELETE=(50 'Error during OpenNebula delete-user operation')
@@ -44,11 +51,9 @@ function process {
   # Iterate through every VO and check which user will be added or removed
   while read VO_FROM_PERUN; do
 
-    echo "Processing VO $VO_FROM_PERUN ..."
-
     # Skip VOs not registered as groups in opennebula
-    if [ `echo $VOS_FROM_ON | grep -c "$VO_FROM_PERUN"` -eq 0 ]; then
-      echo "This VO is not registered as a group in OpenNebula, skipping ..."
+    if [ `echo "$VOS_FROM_ON" | grep -c "^$VO_FROM_PERUN$"` -eq 0 ]; then
+      log_msg I_VO_SKIPPED
       continue
     fi
 
@@ -57,38 +62,37 @@ function process {
 
     # Get current users from OpenNebula
     VO_USERS_FROM_ON_XML=`oneuser list --xml`
-    VO_USERS_FROM_ON=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ GNAME=\"${VO_FROM_PERUN}\" and AUTH_DRIVER=\"x509\" ]/NAME/text()" | sort`
+    VO_USERS_FROM_ON=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ GNAME=\"${VO_FROM_PERUN}\" ]/NAME/text()" | sort`
 
     # Check who should be deleted from OpenNebula
     while read VO_USER_FROM_ON; do
 
-      echo "Checking whether $VO_USER_FROM_ON from OpenNebula is still in VO $VO_FROM_PERUN from Perun ..."
-
-      if [ `echo $VO_USERS_FROM_PERUN | grep -c "$VO_USER_FROM_ON"` -eq 0 ]; then
-
-        echo "$VO_USER_FROM_ON is not in $VO_FROM_PERUN, removing from OpenNebula ..."
-
+      if [ `echo "$VO_USERS_FROM_PERUN" | grep -c "^$VO_USER_FROM_ON$"` -eq 0 ]; then
         ## User is not in the VO anymore, we have to remove him from OpenNebula
         # Check whether the user has any VMs running and terminate them forcefully
         USER_VMS=`onevm list $VO_USER_FROM_ON --xml | xpath -q -e "/VM_POOL/VM/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
         if [ "$USER_VMS" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP onevm delete $USER_VMS
+          log_msg I_DELETING_VMS
         fi
 
         # Check for networks, images, VM templates owned by this user and delete them
         USER_VNETS=`onevnet list $VO_USER_FROM_ON --xml | xpath -q -e "/VNET_POOL/VNET/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
         if [ "$USER_VNETS" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP onevnet delete $USER_VNETS
+          log_msg I_DELETING_VNETS
         fi
 
         USER_IMAGES=`oneimage list $VO_USER_FROM_ON --xml | xpath -q -e "/IMAGE_POOL/IMAGE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
         if [ "$USER_IMAGES" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP oneimage delete $USER_IMAGES
+          log_msg I_DELETING_IMAGES
         fi
         
         USER_TEMPLATES=`onetemplate list $VO_USER_FROM_ON --xml | xpath -q -e "/VMTEMPLATE_POOL/VMTEMPLATE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
         if [ "$USER_TEMPLATES" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP onetemplate delete $USER_TEMPLATES
+          log_msg I_DELETING_TEMPLATES
         fi
 
         # Remove the user from OpenNebula
@@ -96,11 +100,9 @@ function process {
 
         # Report success
         log_msg I_USER_DELETED
-      else
-        echo "$VO_USER_FROM_ON is still in VO $VO_FROM_PERUN, doing nothing ..."
       fi
 
-    done< <(echo -e "$VO_USERS_FROM_ON")
+    done< <(echo "$VO_USERS_FROM_ON")
 
     # Need more information to create a user
     VO_USERS_FROM_PERUN=`cat $DATA_FROM_PERUN | grep "^[^:]\+:${VO_FROM_PERUN}:[^:]\+:[^:]\+" | sort`
@@ -111,11 +113,9 @@ function process {
       # Extract <VO_NAME>_<UNIQUE_USER_ID>
       VO_USER_FROM_PERUN_SHORT=`echo "$VO_USER_FROM_PERUN" | awk -F ':' '{print $1}'`
       
-      echo "Checking whether $VO_USER_FROM_PERUN_SHORT from Perun should be added to OpenNebula ..."
-      if [ `echo $VO_USERS_FROM_ON | grep -c "$VO_USER_FROM_PERUN_SHORT"` -eq 0 ]; then
+      if [ `echo "$VO_USERS_FROM_ON" | grep -c "^$VO_USER_FROM_PERUN_SHORT$"` -eq 0 ]; then
         # Detected a VO member not present in OpenNebula
         while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL; do
-          echo "Adding $USERNAME to OpenNebula ..."
           # Construct a unique username and append VOMS information to user's DN
           VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
@@ -143,7 +143,6 @@ function process {
         # Detected a VO member present in OpenNebula, we have to check whether his credentials,
         # VO membership or personal information need updating.
         while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL; do
-          echo "Updating $USERNAME in OpenNebula, if necessary ..."
           # Construct a unique username and append VOMS information to user's DN
           VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
@@ -153,14 +152,16 @@ function process {
           # Check authn driver and password (==VOMS_DN)
           ON_AUTHN=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/AUTH_DRIVER/text()"`
           ON_PASS=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/PASSWORD/text()"`
-          if [ "X${ON_AUTHN}" != "Xx509" ] || [ "X${ON_PASS}" != "X${VOMS_DN}" ]; then
+          if [ "${ON_AUTHN}" != "x509" ] || [ "${ON_PASS}" != "${VOMS_DN}" ]; then
             catch_error E_ON_UPDATE oneuser chauth "$USERNAME" x509 "$VOMS_DN"
+            log_msg I_USER_AUTHN_UPDATE
           fi
 
           # Check group (==VO) membership
           ON_GROUP=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/GNAME/text()"`
-          if [ "X${ON_GROUP}" != "X${VO_SHORTNAME}" ]; then
+          if [ "${ON_GROUP}" != "${VO_SHORTNAME}" ]; then
             catch_error E_ON_UPDATE oneuser chgrp "$USERNAME" "$VO_SHORTNAME"
+            log_msg I_USER_GROUP_UPDATE
           fi
           
           # Check user properties
@@ -169,19 +170,18 @@ function process {
           ON_PROP_EMAIL=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/EMAIL/text()"`
 
           FULLNAME=`echo $USER_DN | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
-          if [ "X${ON_PROP_X509_DN}" != "X${USER_DN}" ] || [ "X${ON_PROP_NAME}" != "X${FULLNAME}" ] || [ "X${ON_PROP_EMAIL}" != "X${USER_EMAIL}" ]; then
+          if [ "${ON_PROP_X509_DN}" != "${USER_DN}" ] || [ "${ON_PROP_NAME}" != "${FULLNAME}" ] || [ "${ON_PROP_EMAIL}" != "${USER_EMAIL}" ]; then
             TMP_FILE=`mktemp ${WORK_DIR}/${USERNAME}.XXXXXXXXXX`
             [ $? -ne 0 ] && log_msg E_WORK_DIR
  
             echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"" > $TMP_FILE
             catch_error E_ON_UPDATE_PROPERTIES oneuser update "$USERNAME" $TMP_FILE
+            log_msg I_USER_PROPS_UPDATED
           fi
-
-          log_msg I_USER_UPDATED
         done< <(echo "$VO_USER_FROM_PERUN")
       fi
 
-    done< <(echo -e "$VO_USERS_FROM_PERUN")
+    done< <(echo "$VO_USERS_FROM_PERUN")
 
-  done< <(echo -e "$VOS_FROM_PERUN")
+  done< <(echo "$VOS_FROM_PERUN")
 }
