@@ -1,13 +1,9 @@
 #!/bin/bash
 NAME='perunv3'
 SCRIPTS_DIR=`dirname $0`
-LOCK_DIR=${LOCK_DIR:=/var/lock}
+LOCK_DIR="${SCRIPTS_DIR}/var/lock"
 SERVICE_BLACKLIST=()  # syntax: (item1 item2 item3)
-SERVICE_WHITELIST=()
-
-if [ -f "/etc/${NAME}.conf" ]; then
-  . "/etc/${NAME}.conf"
-fi
+SERVICE_WHITELIST=('opennebula_fedcloud')
 
 # Temporarily set umask to 077 in order to have all temp configuration files private
 umask 077
@@ -74,46 +70,6 @@ function version_check {
   [ ${RECEIVED_PROTOCOL_VERSION} = ${PROTOCOL_VERSION} ] || log_msg I_PROTOCOL_MINOR_DIFF
 }
 
-function diff_mv {
-  SRC="$1"
-  DST="$2"
-
-  diff -q "${SRC}" "${DST}" &>/dev/null || {
-    # Read permissions of the destination file
-    if [ -f "${DST}" ]; then 
-      DST_PERM=`stat -c %a "${DST}"`
-      # Set the original permissions on the source file
-      catch_error E_PERMISSIONS chmod $DST_PERM "${SRC}"
-    fi
-    catch_error E_MOVE_ERROR mv -f "${SRC}" "${DST}"
-
-    # If SElinux is present and set to enforcing then restore contexts
-    which sestatus > /dev/null 2>&1  && if [ `sestatus | grep "SELinux status" | grep -c enabled` -eq 1 -a `sestatus | grep "Current mode" | grep -c enforcing` -eq 1 ]; then
-      restorecon "${DST}"
-    fi
-
-    return 0
-  }
-
-  return 1
-}
-
-function mv_chmod {
-  SRC="$1"
-  DST="$2"
-
-  # Read permissions of the destination file
-  if [ -f "${DST}" ]; then 
-    DST_PERM=`stat -c %a "${DST}"`
-    # Set the original permissions on the source file
-    catch_error E_PERMISSIONS chmod $DST_PERM "${SRC}"
-  fi
-
-  diff_mv "${SRC}" "${DST}"
-
-  return $?
-}
-
 function in_array {
   ITEM=$1
   shift
@@ -123,52 +79,6 @@ function in_array {
   done
 
   return 1
-}
-
-# Params: file_with_old_state file_with_new_state destination_file
-# This function do diff between OLD and NEW and then apply changes to destination. After that move NEW to OLD (to ensure rigth state for another calling).
-function diff_update {
-  OLD="$1"
-  NEW="$2"
-  DESTINATION="$3"
-
-  TMP_DIFF_FILE="${WORK_DIR}/diff_update-old_new_diff"
-  TMP_TO_REMOVE_FILE="${WORK_DIR}/diff_update-to_remove"
-  TMP_TO_ADD_FILE="${WORK_DIR}/diff_update-to_add"
-  TMP_DESTINATION_FILE="${WORK_DIR}/diff_update-destination"
-
-  [ -r "$NEW" ] || log_msg E_NEW_FILE
-  [ -r "$DESTINATION" -a -w "$DESTINATION" ] || log_msg E_DESTINATION_FILE
-
-  catch_error E_IO touch "$TMP_DIFF_FILE" "$TMP_TO_REMOVE_FILE" "$TMP_TO_ADD_FILE" "$TMP_DESTINATION_FILE"
-
-  diff -w -N "$OLD" "$NEW" > "$TMP_DIFF_FILE"
-
-  grep '^>' "$TMP_DIFF_FILE" | sed -e 's/^..//' > "$TMP_TO_ADD_FILE"
-  grep '^<' "$TMP_DIFF_FILE" | sed -e 's/^..//' > "$TMP_TO_REMOVE_FILE"
-  if [ $? -ne 0 ]; then 
-    #nothing to remove, just add
-    catch_error E_IO cat "$DESTINATION" "$TMP_TO_ADD_FILE" >> "$TMP_DESTINATION_FILE"
-  else 
-
-    #remove from second argument (file) or stdin lines which are contained in first agrument (file)
-    # run with -n switch!
-    PERL_UNIQUE='
-BEGIN {
-open TOREMOVE, shift @ARGV || die $!;
-%toRemove = map { $_ => 1 } <TOREMOVE>;
-}
-s/^\s+(.*?)\s+$/$1\n/g;
-print if($toRemove{$_} != 1);'
-
-    catch_error E_PERL_UNIQUE perl -n -e "$PERL_UNIQUE" "$TMP_TO_REMOVE_FILE" "$DESTINATION" > "$TMP_DESTINATION_FILE"
-    catch_error E_IO cat "$TMP_TO_ADD_FILE" >> "$TMP_DESTINATION_FILE"
-
-  fi
-
-  catch_error E_NEW_TO_OLD mv "$NEW" "$OLD"
-  
-  diff_mv "$TMP_DESTINATION_FILE" "$DESTINATION"
 }
 
 #################################################
