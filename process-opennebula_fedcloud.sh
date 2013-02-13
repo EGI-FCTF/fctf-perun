@@ -1,17 +1,17 @@
 #!/bin/bash
 
-################################################################################################
+########################################################################################################################
 # 'process-opennebula_fedcloud.sh' has an external dependency on 'libxml-xpath-perl'
 # and a Ruby gem 'opennebula-cli'.
 #
 # 'process-opennebula_fedcloud.sh' expects data in the following format:
 #
-# <VO_NAME>_<UNIQUE_USER_ID>:<VO_NAME>:<USER_DN>:<USER_MAIL>
+# <VO_NAME>_<UNIQUE_USER_ID>:<VO_NAME>:<USER_DN>:<USER_MAIL>:<PIPE_SEPARATED_SSH_KEYS>
 #
 # e.g.,
 #
-# fedcloud.egi.eu_1:fedcloud.egi.eu:/C=CZ/O=University/CN=Name:mymail@example.org
-################################################################################################
+# fedcloud.egi.eu_1:fedcloud.egi.eu:/C=CZ/O=University/CN=Name:mymail@example.org:ssh-rsa dfdf...SFfgs5== user@localhost
+########################################################################################################################
 
 PROTOCOL_VERSION='3.0.0'
 
@@ -65,7 +65,7 @@ function process {
     VO_USERS_FROM_ON=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ GNAME=\"${VO_FROM_PERUN}\" ]/NAME/text()" | sort`
 
     # Check who should be deleted from OpenNebula
-    while read VO_USER_FROM_ON; do
+    [ "$VO_USERS_FROM_ON" != "" ] && while read VO_USER_FROM_ON; do
 
       if [ `echo "$VO_USERS_FROM_PERUN" | grep -c "^$VO_USER_FROM_ON$"` -eq 0 ]; then
         ## User is not in the VO anymore, we have to remove him from OpenNebula
@@ -108,19 +108,19 @@ function process {
     VO_USERS_FROM_PERUN=`cat $DATA_FROM_PERUN | grep "^[^:]\+:${VO_FROM_PERUN}:[^:]\+:[^:]\+" | sort`
 
     # Check who should be added to OpenNebula
-    while read VO_USER_FROM_PERUN; do
+    [ "$VO_USERS_FROM_PERUN" != "" ] && while read VO_USER_FROM_PERUN; do
 
       # Extract <VO_NAME>_<UNIQUE_USER_ID>
       VO_USER_FROM_PERUN_SHORT=`echo "$VO_USER_FROM_PERUN" | awk -F ':' '{print $1}'`
       
       if [ `echo "$VO_USERS_FROM_ON" | grep -c "^$VO_USER_FROM_PERUN_SHORT$"` -eq 0 ]; then
         # Detected a VO member not present in OpenNebula
-        while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL; do
+        while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL SSH_KEYS; do
           # Construct a unique username and append VOMS information to user's DN
-          VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
           # Remove all spaces from VOMS_DN
-          VOMS_DN=`echo "$VOMS_DN" | sed 's/ //g'`
+          VOMS_DN=`echo "$VOMS_DN" | sed 's/\s//g'`
 
           # Add user to OpenNebula
           catch_error E_ON_CREATE oneuser create "$USERNAME" "$VOMS_DN" --driver x509
@@ -132,9 +132,15 @@ function process {
           TMP_FILE=`mktemp ${WORK_DIR}/${USERNAME}.XXXXXXXXXX`
           [ $? -ne 0 ] && log_msg E_WORK_DIR
 
-          FULLNAME=`echo $USER_DN | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
+          FULLNAME=`echo "$USER_DN" | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
 
-          echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"" > $TMP_FILE
+          echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"\n" > $TMP_FILE
+
+          if [ "$SSH_KEYS" != "" ]; then
+            SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/' | sort`
+            echo "SSH_KEY=\"$SSH_KEYS\"" >> $TMP_FILE
+          fi
+
           catch_error E_ON_CREATE_PROPERTIES oneuser update "$USERNAME" $TMP_FILE
 
           log_msg I_USER_ADDED
@@ -142,39 +148,47 @@ function process {
       else
         # Detected a VO member present in OpenNebula, we have to check whether his credentials,
         # VO membership or personal information need updating.
-        while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL; do
+        while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL SSH_KEYS; do
           # Construct a unique username and append VOMS information to user's DN
-          VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
           # Remove all spaces from VOMS_DN
-          VOMS_DN=`echo "$VOMS_DN" | sed 's/ //g'`
+          VOMS_DN=`echo "$VOMS_DN" | sed 's/\s//g'`
           
           # Check authn driver and password (==VOMS_DN)
-          ON_AUTHN=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/AUTH_DRIVER/text()"`
-          ON_PASS=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/PASSWORD/text()"`
-          if [ "${ON_AUTHN}" != "x509" ] || [ "${ON_PASS}" != "${VOMS_DN}" ]; then
+          ON_AUTHN=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/AUTH_DRIVER/text()"`
+          ON_PASS=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/PASSWORD/text()"`
+          if [ "$ON_AUTHN" != "x509" ] || [ "$ON_PASS" != "$VOMS_DN" ]; then
             catch_error E_ON_UPDATE oneuser chauth "$USERNAME" x509 "$VOMS_DN"
             log_msg I_USER_AUTHN_UPDATE
           fi
 
           # Check group (==VO) membership
-          ON_GROUP=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/GNAME/text()"`
-          if [ "${ON_GROUP}" != "${VO_SHORTNAME}" ]; then
+          ON_GROUP=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/GNAME/text()"`
+          if [ "$ON_GROUP" != "$VO_SHORTNAME" ]; then
             catch_error E_ON_UPDATE oneuser chgrp "$USERNAME" "$VO_SHORTNAME"
             log_msg I_USER_GROUP_UPDATE
           fi
           
           # Check user properties
-          ON_PROP_X509_DN=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/X509_DN/text()"`
-          ON_PROP_NAME=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/NAME/text()"`
-          ON_PROP_EMAIL=`echo $VO_USERS_FROM_ON_XML | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/EMAIL/text()"`
+          ON_PROP_X509_DN=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/X509_DN/text()"`
+          ON_PROP_NAME=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/NAME/text()"`
+          ON_PROP_EMAIL=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/EMAIL/text()"`
+          ON_PROP_SSH_KEY=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/SSH_KEY/text()" | sort`
 
-          FULLNAME=`echo $USER_DN | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
-          if [ "${ON_PROP_X509_DN}" != "${USER_DN}" ] || [ "${ON_PROP_NAME}" != "${FULLNAME}" ] || [ "${ON_PROP_EMAIL}" != "${USER_EMAIL}" ]; then
+          SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/' | sort`
+
+          FULLNAME=`echo "$USER_DN" | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
+          if [ "$ON_PROP_X509_DN" != "$USER_DN" ] || [ "$ON_PROP_NAME" != "$FULLNAME" ] || [ "$ON_PROP_EMAIL" != "$USER_EMAIL" ] || [ "$ON_PROP_SSH_KEY" != "$SSH_KEYS" ]; then
             TMP_FILE=`mktemp ${WORK_DIR}/${USERNAME}.XXXXXXXXXX`
             [ $? -ne 0 ] && log_msg E_WORK_DIR
  
-            echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"" > $TMP_FILE
+            echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"\n" > $TMP_FILE
+
+            if [ "$SSH_KEYS" != "" ]; then
+              echo "SSH_KEY=\"$SSH_KEYS\"" | sed 's/|/\n/' >> $TMP_FILE
+            fi
+
             catch_error E_ON_UPDATE_PROPERTIES oneuser update "$USERNAME" $TMP_FILE
             log_msg I_USER_PROPS_UPDATED
           fi
