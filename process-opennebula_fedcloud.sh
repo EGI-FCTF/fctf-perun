@@ -117,7 +117,8 @@ function process {
         # Detected a VO member not present in OpenNebula
         while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL SSH_KEYS; do
           # Construct a unique username and append VOMS information to user's DN
-          VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          #VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
           # Remove all spaces from VOMS_DN
           VOMS_DN=`echo "$VOMS_DN" | sed 's/\s//g'`
@@ -150,7 +151,8 @@ function process {
         # VO membership or personal information need updating.
         while IFS=":" read USERNAME VO_SHORTNAME USER_DN USER_EMAIL SSH_KEYS; do
           # Construct a unique username and append VOMS information to user's DN
-          VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          #VOMS_DN="${USER_DN}|${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
+          VOMS_DN="${USER_DN}/VO=${VO_SHORTNAME}/Role=NULL/Capability=NULL"
 
           # Remove all spaces from VOMS_DN
           VOMS_DN=`echo "$VOMS_DN" | sed 's/\s//g'`
