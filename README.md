@@ -11,7 +11,7 @@ _Features:_
 ## Installation
 ### Dependencies
 #### OpenNebula
-* `libxml-xpath-perl` (provides `/usr/bin/xpath`)
+* `libxml-xpath-perl` (provides perl module `XML::XPath` and `/usr/bin/xpath`)
 * `ruby` (used by `opennebula-cli`)
 * `opennebula-cli` (rubygem, is already present in ON installations)
 
