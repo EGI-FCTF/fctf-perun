@@ -12,27 +12,27 @@
 
 PROTOCOL_VERSION='3.0.0'
 
-function get_process_fedcloud_export{
+function get_process_fedcloud_export {
   . ${SCRIPTS_DIR}/fedcloud_export.d/process-fedcloud_export_${CLOUD_PLATFORM}.sh
 }
 
-function run_fedcloud_export_pre_hooks{
+function run_fedcloud_export_pre_hooks {
   for F in `ls "${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.d"/pre_* 2>/dev/null` ;do . $F ; done
 }
 
-function run_fedcloud_export_post_hooks{
+function run_fedcloud_export_post_hooks {
   for F in `ls "${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.d"/post_* 2>/dev/null` ;do . $F ; done
 }
 
-function add_fedcloud_export_bin{
+function add_fedcloud_export_bin {
   PATH=${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.bin:$PATH
 }
 
-function add_fedcloud_export_lib{
+function add_fedcloud_export_lib {
   LD_LIBRARY_PATH=${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.lib:$LD_LIBRARY_PATH
 }
 
-function process{
+function process {
   E_UNKNOWN_CLOUD_PLATFORM=(100 'Unknown cloud platform!')
   CLOUD_PLATFORM=`head -n 1 "${WORK_DIR}/CLOUD_PLATFORM"`
 
