@@ -49,8 +49,11 @@ function process_fedcloud_export {
   # Get a list of existing groups from OpenNebula,
   # each group represents one VO, groups have to be
   # already present in OpenNebula
-  VOS_FROM_ON=""
-  catch_error E_ON_CHAIN_FAILED VOS_FROM_ON=`onegroup list --xml | xpath -q -e '/GROUP_POOL/GROUP[ NAME!="oneadmin" and NAME!="users" ]/NAME/text()' | sort`
+  VOS_FROM_ON=`onegroup list --xml | xpath -q -e '/GROUP_POOL/GROUP[ NAME!="oneadmin" and NAME!="users" ]/NAME/text()' | sort`
+
+  if [ "$?" -ne 0 ]; then
+    catch_error E_ON_CHAIN_FAILED /bin/false
+  fi
 
   # Iterate through every VO and check which user will be added or removed
   while read VO_FROM_PERUN; do
@@ -65,8 +68,11 @@ function process_fedcloud_export {
     VO_USERS_FROM_PERUN=`cat $DATA_FROM_PERUN | grep "^[^:]\+:${VO_FROM_PERUN}:[^:]\+:[^:]\+" | awk -F ':' '{print $1}' | sort`
 
     # Get current users from OpenNebula
-    VO_USERS_FROM_ON_XML=""
-    catch_error E_ON_CHAIN_FAILED VO_USERS_FROM_ON_XML=`oneuser list --xml`
+    VO_USERS_FROM_ON_XML=`oneuser list --xml`
+
+    if [ "$?" -ne 0 ]; then
+      catch_error E_ON_CHAIN_FAILED /bin/false
+    fi
 
     VO_USERS_FROM_ON=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ GNAME=\"${VO_FROM_PERUN}\" ]/NAME/text()" | sort`
 
@@ -76,8 +82,11 @@ function process_fedcloud_export {
       if [ `echo "$VO_USERS_FROM_PERUN" | grep -c "^$VO_USER_FROM_ON$"` -eq 0 ]; then
         ## User is not in the VO anymore, we have to remove him from OpenNebula
         # Check whether the user has any VMs running and terminate them forcefully
-        USER_VMS=""
-        catch_error E_ON_CHAIN_FAILED  USER_VMS=`onevm list $VO_USER_FROM_ON --xml | xpath -q -e "/VM_POOL/VM/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        USER_VMS=`onevm list $VO_USER_FROM_ON --xml | xpath -q -e "/VM_POOL/VM/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+
+        if [ "$?" -ne 0 ]; then
+          catch_error E_ON_CHAIN_FAILED /bin/false
+        fi
 
         if [ "$USER_VMS" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP onevm delete $USER_VMS
@@ -86,24 +95,33 @@ function process_fedcloud_export {
 
         ## TODO: Some grace period is in order for deployment in production
         # Check for networks, images, VM templates owned by this user and delete them
-        #USER_VNETS=""
-        #catch_error E_ON_CHAIN_FAILED USER_VNETS=`onevnet list $VO_USER_FROM_ON --xml | xpath -q -e "/VNET_POOL/VNET/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_VNETS=`onevnet list $VO_USER_FROM_ON --xml | xpath -q -e "/VNET_POOL/VNET/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
+        #if [ "$?" -ne 0 ]; then
+        #  catch_error E_ON_CHAIN_FAILED /bin/false
+        #fi
         #
         #if [ "$USER_VNETS" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP onevnet delete $USER_VNETS
         #  log_msg I_DELETING_VNETS
         #fi
 
-        #USER_IMAGES=""
-        #catch_error E_ON_CHAIN_FAILED USER_IMAGES=`oneimage list $VO_USER_FROM_ON --xml | xpath -q -e "/IMAGE_POOL/IMAGE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_IMAGES=`oneimage list $VO_USER_FROM_ON --xml | xpath -q -e "/IMAGE_POOL/IMAGE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
+        #if [ "$?" -ne 0 ]; then
+        #  catch_error E_ON_CHAIN_FAILED /bin/false
+        #fi
         #
         #if [ "$USER_IMAGES" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP oneimage delete $USER_IMAGES
         #  log_msg I_DELETING_IMAGES
         #fi
         
-        #USER_TEMPLATES=""
-        #catch_error E_ON_CHAIN_FAILED USER_TEMPLATES=`onetemplate list $VO_USER_FROM_ON --xml | xpath -q -e "/VMTEMPLATE_POOL/VMTEMPLATE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_TEMPLATES=`onetemplate list $VO_USER_FROM_ON --xml | xpath -q -e "/VMTEMPLATE_POOL/VMTEMPLATE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
+        #if [ "$?" -ne 0 ]; then
+        #  catch_error E_ON_CHAIN_FAILED /bin/false
+        #fi
         #
         #if [ "$USER_TEMPLATES" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP onetemplate delete $USER_TEMPLATES
