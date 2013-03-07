@@ -31,6 +31,7 @@ function process_fedcloud_export {
   E_ON_CREATE_PROPERTIES=(53 'Error during OpenNebula create-user-properties operation')
   E_ON_UPDATE=(54 'Error during OpenNebula update-user operation')
   E_ON_UPDATE_PROPERTIES=(55 'Error during OpenNebula update-user-properties operation')
+  E_ON_CHAIN_FAILED=(56 'Error during data parsing, sorting and filtering')
 
   DATA_FROM_PERUN="${WORK_DIR}/fedcloud_export"
   VOMS_ONLY=1 # Set this to 0 if you want to register DNs from personal certificates
@@ -39,13 +40,17 @@ function process_fedcloud_export {
   # There is no need to call create_lock, this was already taken care of
   # in 'process-fedcloud_export.sh'
 
+  # Make pipe-chained commands report all failures as a global failure
+  set -o pipefail
+
   # Get list of VOs from Perun
   VOS_FROM_PERUN=`cat $DATA_FROM_PERUN | sed 's/^[^:]\+:\([[:alnum:]_.-]*\):.*/\1/' | uniq | sort`
-  
+
   # Get a list of existing groups from OpenNebula,
   # each group represents one VO, groups have to be
   # already present in OpenNebula
-  VOS_FROM_ON=`onegroup list --xml | xpath -q -e '/GROUP_POOL/GROUP[ NAME!="oneadmin" and NAME!="users" ]/NAME/text()' | sort`
+  VOS_FROM_ON=""
+  catch_error E_ON_CHAIN_FAILED VOS_FROM_ON=`onegroup list --xml | xpath -q -e '/GROUP_POOL/GROUP[ NAME!="oneadmin" and NAME!="users" ]/NAME/text()' | sort`
 
   # Iterate through every VO and check which user will be added or removed
   while read VO_FROM_PERUN; do
@@ -60,7 +65,9 @@ function process_fedcloud_export {
     VO_USERS_FROM_PERUN=`cat $DATA_FROM_PERUN | grep "^[^:]\+:${VO_FROM_PERUN}:[^:]\+:[^:]\+" | awk -F ':' '{print $1}' | sort`
 
     # Get current users from OpenNebula
-    VO_USERS_FROM_ON_XML=`oneuser list --xml`
+    VO_USERS_FROM_ON_XML=""
+    catch_error E_ON_CHAIN_FAILED VO_USERS_FROM_ON_XML=`oneuser list --xml`
+
     VO_USERS_FROM_ON=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ GNAME=\"${VO_FROM_PERUN}\" ]/NAME/text()" | sort`
 
     # Check who should be deleted from OpenNebula
@@ -69,7 +76,9 @@ function process_fedcloud_export {
       if [ `echo "$VO_USERS_FROM_PERUN" | grep -c "^$VO_USER_FROM_ON$"` -eq 0 ]; then
         ## User is not in the VO anymore, we have to remove him from OpenNebula
         # Check whether the user has any VMs running and terminate them forcefully
-        USER_VMS=`onevm list $VO_USER_FROM_ON --xml | xpath -q -e "/VM_POOL/VM/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        USER_VMS=""
+        catch_error E_ON_CHAIN_FAILED  USER_VMS=`onevm list $VO_USER_FROM_ON --xml | xpath -q -e "/VM_POOL/VM/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+
         if [ "$USER_VMS" != "" ]; then
           catch_error E_ON_DELETE_CLEANUP onevm delete $USER_VMS
           log_msg I_DELETING_VMS
@@ -77,19 +86,25 @@ function process_fedcloud_export {
 
         ## TODO: Some grace period is in order for deployment in production
         # Check for networks, images, VM templates owned by this user and delete them
-        #USER_VNETS=`onevnet list $VO_USER_FROM_ON --xml | xpath -q -e "/VNET_POOL/VNET/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_VNETS=""
+        #catch_error E_ON_CHAIN_FAILED USER_VNETS=`onevnet list $VO_USER_FROM_ON --xml | xpath -q -e "/VNET_POOL/VNET/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
         #if [ "$USER_VNETS" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP onevnet delete $USER_VNETS
         #  log_msg I_DELETING_VNETS
         #fi
 
-        #USER_IMAGES=`oneimage list $VO_USER_FROM_ON --xml | xpath -q -e "/IMAGE_POOL/IMAGE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_IMAGES=""
+        #catch_error E_ON_CHAIN_FAILED USER_IMAGES=`oneimage list $VO_USER_FROM_ON --xml | xpath -q -e "/IMAGE_POOL/IMAGE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
         #if [ "$USER_IMAGES" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP oneimage delete $USER_IMAGES
         #  log_msg I_DELETING_IMAGES
         #fi
         
-        #USER_TEMPLATES=`onetemplate list $VO_USER_FROM_ON --xml | xpath -q -e "/VMTEMPLATE_POOL/VMTEMPLATE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #USER_TEMPLATES=""
+        #catch_error E_ON_CHAIN_FAILED USER_TEMPLATES=`onetemplate list $VO_USER_FROM_ON --xml | xpath -q -e "/VMTEMPLATE_POOL/VMTEMPLATE/ID/text()" | sort | sed ':a;N;$!ba;s/\n/,/g'`
+        #
         #if [ "$USER_TEMPLATES" != "" ]; then
         #  catch_error E_ON_DELETE_CLEANUP onetemplate delete $USER_TEMPLATES
         #  log_msg I_DELETING_TEMPLATES
@@ -206,4 +221,7 @@ function process_fedcloud_export {
     done< <(echo "$VO_USERS_FROM_PERUN")
 
   done< <(echo "$VOS_FROM_PERUN")
+
+  # Revert to default
+  set +o pipefail
 }

@@ -24,6 +24,14 @@ function run_fedcloud_export_post_hooks{
   for F in `ls "${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.d"/post_* 2>/dev/null` ;do . $F ; done
 }
 
+function add_fedcloud_export_bin{
+  PATH=${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.bin:$PATH
+}
+
+function add_fedcloud_export_lib{
+  LD_LIBRARY_PATH=${SCRIPTS_DIR}/fedcloud_export.d/${CLOUD_PLATFORM}.lib:$LD_LIBRARY_PATH
+}
+
 function process{
   E_UNKNOWN_CLOUD_PLATFORM=(100 'Unknown cloud platform!')
   CLOUD_PLATFORM=`head -n 1 "${WORK_DIR}/CLOUD_PLATFORM"`
@@ -34,6 +42,7 @@ function process{
   LOCK_PIDFILE="$LOCK_FILE/pid"
   create_lock
 
+  #
   case $CLOUD_PLATFORM in
     opennebula)
       get_process_fedcloud_export
@@ -52,9 +61,16 @@ function process{
       ;;
   esac
 
+  #
+  add_fedcloud_export_lib
+  add_fedcloud_export_bin
+
+  #
   run_fedcloud_export_pre_hooks
 
+  #
   process_fedcloud_export
 
+  #
   run_fedcloud_export_post_hooks
 }
