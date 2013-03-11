@@ -1,5 +1,7 @@
 RVM_LOADED="no"
 
+TRAPS=`trap`
+
 if [ -s "$HOME/.rvm/scripts/rvm" ]; then
   . "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
   PATH=$PATH:$HOME/.rvm/bin # Add RVM to PATH for scripting
@@ -11,6 +13,8 @@ if [ -s "/usr/local/rvm/scripts/rvm" ] && [ "$RVM_LOADED" != "yes" ]; then
   PATH=$PATH:/usr/local/rvm/bin # Add RVM to PATH for scripting
   RVM_LOADED="yes"
 fi
+
+eval $TRAPS
 
 if [ -f "$HOME/.opennebula" ]; then
   . "$HOME/.opennebula"
