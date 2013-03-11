@@ -14,7 +14,9 @@ if [ -s "/usr/local/rvm/scripts/rvm" ] && [ "$RVM_LOADED" != "yes" ]; then
   RVM_LOADED="yes"
 fi
 
-eval $TRAPS
+if [ "$RVM_LOADED" = "yes" ]; then
+  eval $TRAPS
+fi
 
 if [ -f "$HOME/.opennebula" ]; then
   . "$HOME/.opennebula"
