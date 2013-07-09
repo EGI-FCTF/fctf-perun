@@ -174,7 +174,7 @@ function process_fedcloud_export {
           echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"\n" > $TMP_FILE
 
           if [ "$SSH_KEYS" != "" ]; then
-            SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/' | sort`
+            SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/g' | sort`
             echo "SSH_KEY=\"$SSH_KEYS\"" >> $TMP_FILE
           fi
 
@@ -217,7 +217,7 @@ function process_fedcloud_export {
           ON_PROP_EMAIL=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/EMAIL/text()"`
           ON_PROP_SSH_KEY=`echo "$VO_USERS_FROM_ON_XML" | xpath -q -e "/USER_POOL/USER[ NAME=\"${USERNAME}\" ]/TEMPLATE/SSH_KEY/text()" | sort`
 
-          SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/' | sort`
+          SSH_KEYS=`echo "$SSH_KEYS" | sed 's/|/\n/g' | sort`
 
           FULLNAME=`echo "$USER_DN" | sed 's|^.*\/CN=\([^/]*\).*|\1|'`
           if [ "$ON_PROP_X509_DN" != "$USER_DN" ] || [ "$ON_PROP_NAME" != "$FULLNAME" ] || [ "$ON_PROP_EMAIL" != "$USER_EMAIL" ] || [ "$ON_PROP_SSH_KEY" != "$SSH_KEYS" ]; then
@@ -227,7 +227,7 @@ function process_fedcloud_export {
             echo -e "X509_DN=\"${USER_DN}\"\nNAME=\"${FULLNAME}\"\nEMAIL=\"${USER_EMAIL}\"\n" > $TMP_FILE
 
             if [ "$SSH_KEYS" != "" ]; then
-              echo "SSH_KEY=\"$SSH_KEYS\"" | sed 's/|/\n/' >> $TMP_FILE
+              echo "SSH_KEY=\"$SSH_KEYS\"" | sed 's/|/\n/g' >> $TMP_FILE
             fi
 
             catch_error E_ON_UPDATE_PROPERTIES oneuser update "$USERNAME" $TMP_FILE
