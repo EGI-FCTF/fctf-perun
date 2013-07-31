@@ -3,14 +3,15 @@
 # 
 # 'process-fedcloud_export.sh' expects data in the following format:
 #
-# <UNIQUE_USER_ID>:<VO_NAME>:<USER_DN>:<USER_MAIL>:<PIPE_SEPARATED_SSH_KEYS>
+# <RECORD_SEPARATOR> = `echo -e '\x1E'`
+# <UNIQUE_USER_ID><RECORD_SEPARATOR><VO_NAME><RECORD_SEPARATOR><USER_DN><RECORD_SEPARATOR><USER_MAIL><RECORD_SEPARATOR><PIPE_SEPARATED_SSH_KEYS>
 #
 # e.g.,
 #
-# fedcloud.egi.eu_1:fedcloud.egi.eu:/C=CZ/O=University/CN=Name:mymail@example.org:ssh-rsa dfdf...SFfgs5== user@localhost
+# fedcloud.egi.eu_1<RECORD_SEPARATOR>fedcloud.egi.eu<RECORD_SEPARATOR>/C=CZ/O=University/CN=Name<RECORD_SEPARATOR>mymail@example.org<RECORD_SEPARATOR>ssh-rsa dfdf...SFfgs5== user@localhost
 ########################################################################################################################
 
-PROTOCOL_VERSION='3.0.0'
+PROTOCOL_VERSION='3.1.0'
 
 function get_process_fedcloud_export {
   . ${SCRIPTS_DIR}/fedcloud_export.d/process-fedcloud_export_${CLOUD_PLATFORM}.sh
@@ -47,13 +48,7 @@ function process {
     opennebula)
       get_process_fedcloud_export
       ;;
-    openstack)
-      get_process_fedcloud_export
-      ;;
     stratuslab)
-      get_process_fedcloud_export
-      ;;
-    wnodes)
       get_process_fedcloud_export
       ;;
     *)
