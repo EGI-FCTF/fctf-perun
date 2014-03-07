@@ -17,15 +17,6 @@ _Features:_
 
 _Notice:_ RVM is _NOT_ required.
 
-#### OpenStack
-TODO
-
-#### StratusLab
-TODO
-
-#### WNoDeS
-TODO
-
 ### Scripts
 * Copy the scripts in this repository to `/opt/perun/bin`.
 * Everything in `/opt/perun/bin` has to be readable by a
@@ -36,7 +27,7 @@ TODO
 ## Configuration
 ### Environment
 #### OpenNebula
-* ENV variables required by `opennebula-cli` must be present.
+* ENV variables required by `opennebula` must be present.
 * Group(s) matching VO name(s) must be present in OpenNebula.
 
 _Notice:_ Have a look at `fedcloud_export.d/opennebula.d/pre_00_source_opennebula_env_vars.sh`
@@ -46,15 +37,6 @@ to load RVM functions and ENV variables from `~/.opennebula`.
 _Notice:_ The script won't touch users in group `oneadmin` and `users`.
 Group(s) matching VO name(s) will be managed fully (any changes
 you make manually will be overwritten).
-
-#### OpenStack
-TODO
-
-#### StratusLab
-TODO
-
-#### WNoDeS
-TODO
 
 ### SSH access
 * The following SSH public key must be present in
