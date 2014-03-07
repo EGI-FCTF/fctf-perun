@@ -35,7 +35,7 @@ function process_fedcloud_export {
   E_ON_CHAIN_FAILED=(56 'Error during data parsing, sorting and filtering')
 
   DATA_FROM_PERUN="${WORK_DIR}/fedcloud_export"
-  VOMS_ONLY=0 # Set this to 0 if you want to register DNs from personal certificates
+  VOMS_ONLY=1 # Set this to 0 if you want to register DNs from personal certificates
               # as well as VOMS proxy certificates
 
   RECORD_SEPARATOR=`echo -e '\x1E'`
