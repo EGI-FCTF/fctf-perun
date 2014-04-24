@@ -10,6 +10,12 @@ if [ -f "/etc/${NAME}.conf" ]; then
 	. "/etc/${NAME}.conf"
 fi
 
+if [ -f "/etc/redhat-release" ]; then
+	PIDOF="/sbin/pidof"
+else
+	PIDOF="/bin/pidof"
+fi
+
 # Temporarily set umask to 077 in order to have all temp configuration files private
 umask 077
 
@@ -70,7 +76,7 @@ function create_lock {
           catch_error E_LOCK_PIDFILE echo $$ > "$LOCK_PIDFILE"
         else 
           # lock file exists, check for existence of concurrent process
-          if pidof perun | grep "\(^\| \)`cat $LOCK_PIDFILE`\( \|$\)"; then 
+          if $PIDOF perun | grep "\(^\| \)`cat $LOCK_PIDFILE`\( \|$\)"; then 
             # concurrent process is running - this skript must terminate
             log_msg E_CONCURRENT_PROCESS
           else 
