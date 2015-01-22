@@ -47,7 +47,7 @@ function process_fedcloud_export {
   set -o pipefail
 
   # Get list of VOs from Perun
-  VOS_FROM_PERUN=`cat $DATA_FROM_PERUN | sed 's/^[^'${RECORD_SEPARATOR}']\+'${RECORD_SEPARATOR}'\([[:alnum:]_.-]*\)'${RECORD_SEPARATOR}'.*/\1/' | uniq | sort`
+  VOS_FROM_PERUN=`cat $DATA_FROM_PERUN | sed 's/^[^'${RECORD_SEPARATOR}']\+'${RECORD_SEPARATOR}'\([[:alnum:]_.-]*\)'${RECORD_SEPARATOR}'.*/\1/' | sort -u`
 
   # Get a list of existing groups from OpenNebula,
   # each group represents one VO, groups have to be
